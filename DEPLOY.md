@@ -8,15 +8,12 @@
 
 ## 🔧 Configuração do Supabase
 
-### 1. Criar Tabela
-```sql
-CREATE TABLE students (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  student_number TEXT UNIQUE NOT NULL,
-  name TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
+### 1. Executar Script SQL
+Execute o arquivo `database_setup.sql` no SQL Editor do Supabase para criar todas as tabelas necessárias:
+
+- `students` - Tabela de estudantes
+- `groups` - Tabela de grupos gerados
+- `group_students` - Relacionamento entre grupos e estudantes
 
 ### 2. Configurar RLS (Row Level Security)
 ```sql

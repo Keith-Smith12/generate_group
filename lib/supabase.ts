@@ -27,7 +27,14 @@ export interface Student {
 
 export interface Group {
   id: string
-  name: string
+  group_number: number
+  created_at: string
   students: Student[]
+}
+
+export interface GroupStudent {
+  id: string
+  group_id: string
+  student_id: string
   created_at: string
 }

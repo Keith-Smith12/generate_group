@@ -13,9 +13,12 @@ export default function Home() {
   const [groupSize, setGroupSize] = useState(4)
   const [groups, setGroups] = useState<Student[][]>([])
   const [loading, setLoading] = useState(false)
+  const [groupHistory, setGroupHistory] = useState<any[]>([])
+  const [showHistory, setShowHistory] = useState(false)
 
   useEffect(() => {
     loadStudents()
+    loadGroupHistory()
   }, [])
 
   const loadStudents = async () => {
@@ -32,6 +35,30 @@ export default function Home() {
       setStudents(shuffledStudents)
     } catch (error) {
       console.error('Erro ao carregar estudantes:', error)
+    }
+  }
+
+  const loadGroupHistory = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('groups')
+        .select(`
+          *,
+          group_students (
+            student_id,
+            students (
+              student_number,
+              name
+            )
+          )
+        `)
+        .order('created_at', { ascending: false })
+      
+      if (error) throw error
+      
+      setGroupHistory(data || [])
+    } catch (error) {
+      console.error('Erro ao carregar histórico de grupos:', error)
     }
   }
 
@@ -92,22 +119,61 @@ export default function Home() {
     }
   }
 
-  const generateGroups = () => {
+  const generateGroups = async () => {
     if (students.length === 0) return
 
-    // Embaralhar todos os estudantes
-    const shuffled = [...students].sort(() => Math.random() - 0.5)
-    
-    const newGroups: Student[][] = []
-    for (let i = 0; i < shuffled.length; i += groupSize) {
-      const group = shuffled.slice(i, i + groupSize)
-      // Embaralhar dentro de cada grupo também
-      group.sort(() => Math.random() - 0.5)
-      newGroups.push(group)
+    setLoading(true)
+    try {
+      // Embaralhar todos os estudantes
+      const shuffled = [...students].sort(() => Math.random() - 0.5)
+      
+      const newGroups: Student[][] = []
+      for (let i = 0; i < shuffled.length; i += groupSize) {
+        const group = shuffled.slice(i, i + groupSize)
+        // Embaralhar dentro de cada grupo também
+        group.sort(() => Math.random() - 0.5)
+        newGroups.push(group)
+      }
+      
+      // Salvar grupos no banco de dados
+      const groupIds: string[] = []
+      
+      for (let i = 0; i < newGroups.length; i++) {
+        const group = newGroups[i]
+        
+        // Criar grupo no banco
+        const { data: groupData, error: groupError } = await supabase
+          .from('groups')
+          .insert([{ group_number: i + 1 }])
+          .select()
+          .single()
+        
+        if (groupError) throw groupError
+        
+        groupIds.push(groupData.id)
+        
+        // Associar estudantes ao grupo
+        const groupStudentInserts = group.map(student => ({
+          group_id: groupData.id,
+          student_id: student.id
+        }))
+        
+        const { error: groupStudentError } = await supabase
+          .from('group_students')
+          .insert(groupStudentInserts)
+        
+        if (groupStudentError) throw groupStudentError
+      }
+      
+      setGroups(newGroups)
+      await loadGroupHistory() // Recarregar histórico
+      toast.success(`${newGroups.length} grupos gerados e salvos com sucesso!`)
+    } catch (error) {
+      console.error('Erro ao gerar grupos:', error)
+      toast.error('Erro ao gerar grupos. Tente novamente.')
+    } finally {
+      setLoading(false)
     }
-    
-    setGroups(newGroups)
-    toast.success('Grupos gerados com sucesso!')
   }
 
   const downloadPDF = () => {
@@ -289,12 +355,21 @@ export default function Home() {
                 disabled={true}
                 className="flex-1 bg-gray-400 text-white py-1.5 px-3 text-sm rounded cursor-not-allowed opacity-50 transition-colors"
               >
-                Gerar Grupos (Desabilitado)
+                Gerar Grupos
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowHistory(!showHistory)}
+                disabled={true}
+                className="flex-1 bg-gray-400 text-white py-1.5 px-3 text-sm rounded cursor-not-allowed opacity-50 transition-colors"
+              >
+                Ver Histórico
               </button>
               <button
                 type="button"
                 onClick={clearAll}
-                className="flex-1 bg-red-600 text-white py-1.5 px-3 text-sm rounded hover:bg-red-700 transition-colors"
+                disabled={true}
+                className="flex-1 bg-gray-400 text-white py-1.5 px-3 text-sm rounded cursor-not-allowed opacity-50 transition-colors"
               >
                 Limpar
               </button>
@@ -335,7 +410,7 @@ export default function Home() {
 
         {/* Grupos Gerados */}
         {groups.length > 0 && (
-          <div className="bg-gray-50 rounded-lg p-3">
+          <div className="bg-gray-50 rounded-lg p-3 mb-6">
             <div className="grid grid-cols-1 gap-3">
               {groups.map((group, index) => (
                 <div key={index} className="bg-white rounded-lg p-2">
@@ -349,6 +424,39 @@ export default function Home() {
                         className="text-xs text-gray-600 p-0.5"
                       >
                         {student.student_number} - {student.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Histórico de Grupos */}
+        {showHistory && groupHistory.length > 0 && (
+          <div className="bg-gray-50 rounded-lg p-3">
+            <h2 className="text-lg font-semibold text-gray-800 mb-3">
+              Histórico de Grupos
+            </h2>
+            <div className="space-y-4">
+              {groupHistory.map((group) => (
+                <div key={group.id} className="bg-white rounded-lg p-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-medium text-gray-800">
+                      Grupo {group.group_number}
+                    </h3>
+                    <span className="text-xs text-gray-500">
+                      {new Date(group.created_at).toLocaleDateString('pt-BR')}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {group.group_students?.map((gs: any) => (
+                      <div
+                        key={gs.student_id}
+                        className="text-xs text-gray-600 p-1 bg-gray-50 rounded"
+                      >
+                        {gs.students?.student_number} - {gs.students?.name}
                       </div>
                     ))}
                   </div>
