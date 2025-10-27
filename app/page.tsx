@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase, Student } from '../lib/supabase'
 import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import toast, { Toaster } from 'react-hot-toast'
 
 export default function Home() {
@@ -13,7 +14,6 @@ export default function Home() {
   const [groups, setGroups] = useState<Student[][]>([])
   const [loading, setLoading] = useState(false)
 
-  // Carregar estudantes do Supabase
   useEffect(() => {
     loadStudents()
   }, [])
@@ -24,10 +24,10 @@ export default function Home() {
         .from('students')
         .select('*')
         .order('created_at', { ascending: false })
-
+      
       if (error) throw error
       
-      // Embaralhar a lista de estudantes para exibição aleatória
+      // Embaralhar para exibição aleatória
       const shuffledStudents = (data || []).sort(() => Math.random() - 0.5)
       setStudents(shuffledStudents)
     } catch (error) {
@@ -53,8 +53,9 @@ export default function Home() {
 
       if (error) throw error
 
-      // Adicionar o novo estudante em uma posição aleatória na lista
       const newStudent = data[0]
+      
+      // Inserir em posição aleatória
       const randomIndex = Math.floor(Math.random() * (students.length + 1))
       const newStudents = [...students]
       newStudents.splice(randomIndex, 0, newStudent)
@@ -82,8 +83,7 @@ export default function Home() {
         if (error) throw error
 
         setStudents(students.filter(student => student.id !== studentId))
-        // Limpar grupos se o estudante removido estava em algum grupo
-        setGroups([])
+        setGroups([]) // Limpar grupos se um estudante for removido
         toast.success('Estudante removido com sucesso!')
       } catch (error) {
         console.error('Erro ao remover estudante:', error)
@@ -95,100 +95,71 @@ export default function Home() {
   const generateGroups = () => {
     if (students.length === 0) return
 
-    // Embaralhar a lista de estudantes de forma mais aleatória
+    // Embaralhar todos os estudantes
     const shuffled = [...students].sort(() => Math.random() - 0.5)
+    
     const newGroups: Student[][] = []
-
-    // Distribuir estudantes aleatoriamente nos grupos
     for (let i = 0; i < shuffled.length; i += groupSize) {
       const group = shuffled.slice(i, i + groupSize)
-      // Embaralhar também dentro de cada grupo
+      // Embaralhar dentro de cada grupo também
       group.sort(() => Math.random() - 0.5)
       newGroups.push(group)
     }
-
+    
     setGroups(newGroups)
     toast.success('Grupos gerados com sucesso!')
   }
 
   const downloadPDF = () => {
     const doc = new jsPDF()
-    const pageWidth = doc.internal.pageSize.width
-    const pageHeight = doc.internal.pageSize.height
-    let yPosition = 20
-
+    
     // Título principal
     doc.setFontSize(20)
-    doc.text('Grupos Gerados', pageWidth / 2, yPosition, { align: 'center' })
-    yPosition += 20
+    doc.text('Grupos Gerados', 105, 20, { align: 'center' })
+    
+    let startY = 40
 
     groups.forEach((group, index) => {
-      // Verificar se precisa de nova página
-      if (yPosition > pageHeight - 100) {
-        doc.addPage()
-        yPosition = 20
-      }
-
       // Título do grupo
       doc.setFontSize(16)
-      doc.text(`Grupo ${index + 1}`, 20, yPosition)
-      yPosition += 15
+      doc.text(`Grupo ${index + 1}`, 20, startY)
+      startY += 10
 
-      // Definir posições das colunas
-      const col1X = 20
-      const col2X = 80
-      const tableWidth = pageWidth - 40
-      const rowHeight = 8
+      // Preparar dados da tabela
+      const tableData = [
+        ['Nº DO ALUNO', 'NOME COMPLETO'],
+        ...group.map(student => [student.student_number, student.name])
+      ]
 
-      // Cabeçalho da tabela
-      doc.setFontSize(12)
-      doc.setFont(undefined, 'bold')
-      
-      // Desenhar bordas da tabela
-      const tableTop = yPosition - 5
-      const tableBottom = yPosition + (group.length + 1) * rowHeight + 5
-      
-      // Linhas horizontais
-      doc.line(col1X, tableTop, col1X + tableWidth, tableTop) // Topo
-      doc.line(col1X, tableBottom, col1X + tableWidth, tableBottom) // Base
-      
-      // Linha do cabeçalho
-      doc.line(col1X, yPosition, col1X + tableWidth, yPosition)
-      yPosition += 5
-      
-      // Cabeçalhos das colunas
-      doc.text('Nº DO ALUNO', col1X + 5, yPosition)
-      doc.text('NOME COMPLETO', col2X + 5, yPosition)
-      yPosition += 8
-      
-      // Linha separadora do cabeçalho
-      doc.line(col1X, yPosition, col1X + tableWidth, yPosition)
-      yPosition += 5
-
-      // Linha vertical entre as colunas
-      doc.line(col2X, tableTop, col2X, tableBottom)
-
-      // Dados dos estudantes
-      doc.setFont(undefined, 'normal')
-      group.forEach((student, studentIndex) => {
-        if (yPosition > pageHeight - 30) {
-          doc.addPage()
-          yPosition = 20
-        }
-        
-        const currentY = yPosition
-        doc.text(student.student_number, col1X + 5, currentY)
-        doc.text(student.name, col2X + 5, currentY)
-        
-        // Linha horizontal entre estudantes
-        if (studentIndex < group.length - 1) {
-          doc.line(col1X, currentY + 4, col1X + tableWidth, currentY + 4)
-        }
-        
-        yPosition += rowHeight
+      // Criar tabela
+      autoTable(doc, {
+        head: [tableData[0]],
+        body: tableData.slice(1),
+        startY: startY,
+        styles: {
+          fontSize: 10,
+          cellPadding: 3,
+        },
+        headStyles: {
+          fillColor: [240, 240, 240],
+          textColor: [0, 0, 0],
+          fontStyle: 'bold',
+        },
+        columnStyles: {
+          0: { cellWidth: 30 },
+          1: { cellWidth: 120 },
+        },
+        margin: { left: 20, right: 20 },
       })
 
-      yPosition += 15
+      // Atualizar posição Y para próxima tabela
+      startY = (doc as any).lastAutoTable.finalY + 20
+
+      // Verificar se precisa de nova página
+      if (startY > 250) {
+        doc.addPage()
+        startY = 20
+      }
     })
 
     doc.save('grupos-escola.pdf')
@@ -196,12 +167,12 @@ export default function Home() {
   }
 
   const clearAll = async () => {
-    if (confirm('Tem certeza que deseja apagar todos os estudantes?')) {
+    if (confirm('Tem certeza que deseja remover todos os estudantes?')) {
       try {
         const { error } = await supabase
           .from('students')
           .delete()
-          .neq('id', '')
+          .neq('id', '00000000-0000-0000-0000-000000000000') // Deletar todos
 
         if (error) throw error
 
@@ -279,6 +250,7 @@ export default function Home() {
               />
 
               <button
+                type="button"
                 onClick={downloadPDF}
                 disabled={groups.length === 0}
                 className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50 transition-colors"
@@ -290,6 +262,7 @@ export default function Home() {
             {/* Botões de Ação */}
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={generateGroups}
                 disabled={students.length === 0}
                 className="flex-1 bg-green-600 text-white py-1.5 px-3 text-sm rounded hover:bg-green-700 disabled:opacity-50 transition-colors"
@@ -297,6 +270,7 @@ export default function Home() {
                 Gerar Grupos
               </button>
               <button
+                type="button"
                 onClick={clearAll}
                 className="flex-1 bg-red-600 text-white py-1.5 px-3 text-sm rounded hover:bg-red-700 transition-colors"
               >
