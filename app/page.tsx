@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, Student } from '../lib/supabase'
+import { supabase, Student } from '@/lib/supabase'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import toast, { Toaster } from 'react-hot-toast'
@@ -111,59 +111,81 @@ export default function Home() {
   }
 
   const downloadPDF = () => {
-    const doc = new jsPDF()
-    
-    // Título principal
-    doc.setFontSize(20)
-    doc.text('Grupos Gerados', 105, 20, { align: 'center' })
-    
-    let startY = 40
+    try {
+      const doc = new jsPDF()
+      
+      // Título principal
+      doc.setFontSize(20)
+      doc.text('Grupos Gerados', 105, 20, { align: 'center' })
+      
+      let startY = 40
 
-    groups.forEach((group, index) => {
-      // Título do grupo
-      doc.setFontSize(16)
-      doc.text(`Grupo ${index + 1}`, 20, startY)
-      startY += 10
+      groups.forEach((group, index) => {
+        // Título do grupo
+        doc.setFontSize(16)
+        doc.text(`Grupo ${index + 1}`, 20, startY)
+        startY += 10
 
-      // Preparar dados da tabela
-      const tableData = [
-        ['Nº DO ALUNO', 'NOME COMPLETO'],
-        ...group.map(student => [student.student_number, student.name])
-      ]
+        // Preparar dados da tabela
+        const tableData = [
+          ['Nº DO ALUNO', 'NOME COMPLETO'],
+          ...group.map(student => [student.student_number, student.name])
+        ]
 
-      // Criar tabela
-      autoTable(doc, {
-        head: [tableData[0]],
-        body: tableData.slice(1),
-        startY: startY,
-        styles: {
-          fontSize: 10,
-          cellPadding: 3,
-        },
-        headStyles: {
-          fillColor: [240, 240, 240],
-          textColor: [0, 0, 0],
-          fontStyle: 'bold',
-        },
-        columnStyles: {
-          0: { cellWidth: 30 },
-          1: { cellWidth: 120 },
-        },
-        margin: { left: 20, right: 20 },
+        // Criar tabela usando autoTable
+        if (typeof autoTable === 'function') {
+          autoTable(doc, {
+            head: [tableData[0]],
+            body: tableData.slice(1),
+            startY: startY,
+            styles: {
+              fontSize: 10,
+              cellPadding: 3,
+            },
+            headStyles: {
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+              fontStyle: 'bold',
+            },
+            columnStyles: {
+              0: { cellWidth: 30 },
+              1: { cellWidth: 120 },
+            },
+            margin: { left: 20, right: 20 },
+          })
+
+          // Atualizar posição Y para próxima tabela
+          startY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 20 : startY + 50
+        } else {
+          // Fallback: criar tabela simples se autoTable não estiver disponível
+          doc.setFontSize(12)
+          doc.setFont('helvetica', 'bold')
+          doc.text('Nº DO ALUNO', 20, startY)
+          doc.text('NOME COMPLETO', 60, startY)
+          startY += 10
+          
+          doc.setFont('helvetica', 'normal')
+          group.forEach((student) => {
+            doc.text(student.student_number, 20, startY)
+            doc.text(student.name, 60, startY)
+            startY += 8
+          })
+          startY += 10
+        }
+
+        // Verificar se precisa de nova página
+        if (startY > 250) {
+          doc.addPage()
+          startY = 20
+        }
       })
 
-      // Atualizar posição Y para próxima tabela
-      startY = (doc as any).lastAutoTable.finalY + 20
-
-      // Verificar se precisa de nova página
-      if (startY > 250) {
-        doc.addPage()
-        startY = 20
-      }
-    })
-
-    doc.save('grupos-escola.pdf')
-    toast.success('PDF baixado com sucesso!')
+      doc.save('grupos-escola.pdf')
+      toast.success('PDF baixado com sucesso!')
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error)
+      toast.error('Erro ao gerar PDF. Tente novamente.')
+    }
   }
 
   const clearAll = async () => {
@@ -264,10 +286,10 @@ export default function Home() {
               <button
                 type="button"
                 onClick={generateGroups}
-                disabled={students.length === 0}
-                className="flex-1 bg-green-600 text-white py-1.5 px-3 text-sm rounded hover:bg-green-700 disabled:opacity-50 transition-colors"
+                disabled={true}
+                className="flex-1 bg-gray-400 text-white py-1.5 px-3 text-sm rounded cursor-not-allowed opacity-50 transition-colors"
               >
-                Gerar Grupos
+                Gerar Grupos (Desabilitado)
               </button>
               <button
                 type="button"
