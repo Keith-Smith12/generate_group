@@ -1,0 +1,282 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { supabase, Student } from '../lib/supabase'
+import jsPDF from 'jspdf'
+
+export default function Home() {
+  const [students, setStudents] = useState<Student[]>([])
+  const [studentNumber, setStudentNumber] = useState('')
+  const [studentName, setStudentName] = useState('')
+  const [groupSize, setGroupSize] = useState(4)
+  const [groups, setGroups] = useState<Student[][]>([])
+  const [loading, setLoading] = useState(false)
+
+  // Carregar estudantes do Supabase
+  useEffect(() => {
+    loadStudents()
+  }, [])
+
+  const loadStudents = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setStudents(data || [])
+    } catch (error) {
+      console.error('Erro ao carregar estudantes:', error)
+    }
+  }
+
+  const addStudent = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!studentNumber.trim() || !studentName.trim()) return
+
+    setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .insert([
+          {
+            student_number: studentNumber.trim(),
+            name: studentName.trim()
+          }
+        ])
+        .select()
+
+      if (error) throw error
+
+      setStudents([...students, ...data])
+      setStudentNumber('')
+      setStudentName('')
+    } catch (error) {
+      console.error('Erro ao adicionar estudante:', error)
+      alert('Erro ao adicionar estudante. Verifique se o número já não existe.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const generateGroups = () => {
+    if (students.length === 0) return
+
+    const shuffled = [...students].sort(() => Math.random() - 0.5)
+    const newGroups: Student[][] = []
+
+    for (let i = 0; i < shuffled.length; i += groupSize) {
+      newGroups.push(shuffled.slice(i, i + groupSize))
+    }
+
+    setGroups(newGroups)
+  }
+
+  const downloadPDF = () => {
+    const doc = new jsPDF()
+    const pageWidth = doc.internal.pageSize.width
+    const pageHeight = doc.internal.pageSize.height
+    let yPosition = 20
+
+    doc.setFontSize(20)
+    doc.text('Grupos Gerados', pageWidth / 2, yPosition, { align: 'center' })
+    yPosition += 20
+
+    groups.forEach((group, index) => {
+      if (yPosition > pageHeight - 40) {
+        doc.addPage()
+        yPosition = 20
+      }
+
+      doc.setFontSize(16)
+      doc.text(`Grupo ${index + 1}`, 20, yPosition)
+      yPosition += 10
+
+      group.forEach((student) => {
+        doc.setFontSize(12)
+        doc.text(`${student.student_number} - ${student.name}`, 30, yPosition)
+        yPosition += 8
+      })
+
+      yPosition += 10
+    })
+
+    doc.save('grupos-escola.pdf')
+  }
+
+  const clearAll = async () => {
+    if (confirm('Tem certeza que deseja apagar todos os estudantes?')) {
+      try {
+        const { error } = await supabase
+          .from('students')
+          .delete()
+          .neq('id', '')
+
+        if (error) throw error
+
+        setStudents([])
+        setGroups([])
+      } catch (error) {
+        console.error('Erro ao limpar estudantes:', error)
+      }
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
+      <div className="max-w-6xl mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">
+            Gerador de Grupos Escolares
+          </h1>
+          <p className="text-gray-600">
+            Cadastre estudantes e gere grupos aleatórios para atividades
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Formulário de Cadastro */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+              Cadastrar Estudante
+            </h2>
+            <form onSubmit={addStudent} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Número do Estudante
+                </label>
+                <input
+                  type="text"
+                  value={studentNumber}
+                  onChange={(e) => setStudentNumber(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ex: 2024001"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nome do Estudante
+                </label>
+                <input
+                  type="text"
+                  value={studentName}
+                  onChange={(e) => setStudentName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ex: João Silva"
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {loading ? 'Adicionando...' : 'Adicionar Estudante'}
+              </button>
+            </form>
+          </div>
+
+          {/* Configuração de Grupos */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+              Gerar Grupos
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tamanho do Grupo
+                </label>
+                <select
+                  value={groupSize}
+                  onChange={(e) => setGroupSize(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value={2}>2 alunos</option>
+                  <option value={3}>3 alunos</option>
+                  <option value={4}>4 alunos</option>
+                  <option value={5}>5 alunos</option>
+                  <option value={6}>6 alunos</option>
+                </select>
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={generateGroups}
+                  disabled={students.length === 0}
+                  className="flex-1 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors"
+                >
+                  Gerar Grupos
+                </button>
+                <button
+                  onClick={clearAll}
+                  className="bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 transition-colors"
+                >
+                  Limpar Tudo
+                </button>
+              </div>
+              <div className="text-sm text-gray-600">
+                Total de estudantes: {students.length}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Lista de Estudantes */}
+        {students.length > 0 && (
+          <div className="mt-8 bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+              Estudantes Cadastrados ({students.length})
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {students.map((student) => (
+                <div
+                  key={student.id}
+                  className="bg-gray-50 p-3 rounded-md text-sm"
+                >
+                  <span className="font-medium">{student.student_number}</span> - {student.name}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Grupos Gerados */}
+        {groups.length > 0 && (
+          <div className="mt-8 bg-white rounded-lg shadow-lg p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-semibold text-gray-800">
+                Grupos Gerados ({groups.length})
+              </h2>
+              <button
+                onClick={downloadPDF}
+                className="bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 transition-colors"
+              >
+                Baixar PDF
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {groups.map((group, index) => (
+                <div key={index} className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                    Grupo {index + 1}
+                  </h3>
+                  <div className="space-y-2">
+                    {group.map((student) => (
+                      <div
+                        key={student.id}
+                        className="bg-blue-50 p-2 rounded text-sm"
+                      >
+                        {student.student_number} - {student.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
