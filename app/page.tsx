@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase, Student } from '../lib/supabase'
 import jsPDF from 'jspdf'
+import toast, { Toaster } from 'react-hot-toast'
 
 export default function Home() {
   const [students, setStudents] = useState<Student[]>([])
@@ -61,9 +62,10 @@ export default function Home() {
       setStudents(newStudents)
       setStudentNumber('')
       setStudentName('')
+      toast.success('Estudante adicionado com sucesso!')
     } catch (error) {
       console.error('Erro ao adicionar estudante:', error)
-      alert('Erro ao adicionar estudante. Verifique se o número já não existe.')
+      toast.error('Erro ao adicionar estudante. Verifique se o número já não existe.')
     } finally {
       setLoading(false)
     }
@@ -82,9 +84,10 @@ export default function Home() {
         setStudents(students.filter(student => student.id !== studentId))
         // Limpar grupos se o estudante removido estava em algum grupo
         setGroups([])
+        toast.success('Estudante removido com sucesso!')
       } catch (error) {
         console.error('Erro ao remover estudante:', error)
-        alert('Erro ao remover estudante.')
+        toast.error('Erro ao remover estudante.')
       }
     }
   }
@@ -105,6 +108,7 @@ export default function Home() {
     }
 
     setGroups(newGroups)
+    toast.success('Grupos gerados com sucesso!')
   }
 
   const downloadPDF = () => {
@@ -120,7 +124,7 @@ export default function Home() {
 
     groups.forEach((group, index) => {
       // Verificar se precisa de nova página
-      if (yPosition > pageHeight - 80) {
+      if (yPosition > pageHeight - 100) {
         doc.addPage()
         yPosition = 20
       }
@@ -130,42 +134,65 @@ export default function Home() {
       doc.text(`Grupo ${index + 1}`, 20, yPosition)
       yPosition += 15
 
+      // Definir posições das colunas
+      const col1X = 20
+      const col2X = 80
+      const tableWidth = pageWidth - 40
+      const rowHeight = 8
+
       // Cabeçalho da tabela
       doc.setFontSize(12)
       doc.setFont(undefined, 'bold')
       
-      // Desenhar linha do cabeçalho
-      doc.line(20, yPosition, pageWidth - 20, yPosition)
+      // Desenhar bordas da tabela
+      const tableTop = yPosition - 5
+      const tableBottom = yPosition + (group.length + 1) * rowHeight + 5
+      
+      // Linhas horizontais
+      doc.line(col1X, tableTop, col1X + tableWidth, tableTop) // Topo
+      doc.line(col1X, tableBottom, col1X + tableWidth, tableBottom) // Base
+      
+      // Linha do cabeçalho
+      doc.line(col1X, yPosition, col1X + tableWidth, yPosition)
       yPosition += 5
       
       // Cabeçalhos das colunas
-      doc.text('Nº DO ALUNO', 25, yPosition)
-      doc.text('NOME COMPLETO', 80, yPosition)
+      doc.text('Nº DO ALUNO', col1X + 5, yPosition)
+      doc.text('NOME COMPLETO', col2X + 5, yPosition)
       yPosition += 8
       
-      // Linha separadora
-      doc.line(20, yPosition, pageWidth - 20, yPosition)
+      // Linha separadora do cabeçalho
+      doc.line(col1X, yPosition, col1X + tableWidth, yPosition)
       yPosition += 5
+
+      // Linha vertical entre as colunas
+      doc.line(col2X, tableTop, col2X, tableBottom)
 
       // Dados dos estudantes
       doc.setFont(undefined, 'normal')
-      group.forEach((student) => {
-        if (yPosition > pageHeight - 20) {
+      group.forEach((student, studentIndex) => {
+        if (yPosition > pageHeight - 30) {
           doc.addPage()
           yPosition = 20
         }
         
-        doc.text(student.student_number, 25, yPosition)
-        doc.text(student.name, 80, yPosition)
-        yPosition += 8
+        const currentY = yPosition
+        doc.text(student.student_number, col1X + 5, currentY)
+        doc.text(student.name, col2X + 5, currentY)
+        
+        // Linha horizontal entre estudantes
+        if (studentIndex < group.length - 1) {
+          doc.line(col1X, currentY + 4, col1X + tableWidth, currentY + 4)
+        }
+        
+        yPosition += rowHeight
       })
 
-      // Linha final do grupo
-      doc.line(20, yPosition, pageWidth - 20, yPosition)
       yPosition += 15
     })
 
     doc.save('grupos-escola.pdf')
+    toast.success('PDF baixado com sucesso!')
   }
 
   const clearAll = async () => {
@@ -180,8 +207,10 @@ export default function Home() {
 
         setStudents([])
         setGroups([])
+        toast.success('Todos os estudantes foram removidos!')
       } catch (error) {
         console.error('Erro ao limpar estudantes:', error)
+        toast.error('Erro ao limpar estudantes.')
       }
     }
   }
@@ -333,6 +362,16 @@ export default function Home() {
           </div>
         )}
       </div>
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#363636',
+            color: '#fff',
+          },
+        }}
+      />
     </div>
   )
 }
